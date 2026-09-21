@@ -1,0 +1,1659 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>導師專用 - 班級作業訂正與寵物養成系統 (雲端同步版)</title>
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+    
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { 
+            getAuth, 
+            signInWithPopup, 
+            GoogleAuthProvider, 
+            signInWithCustomToken, 
+            signInAnonymously, 
+            onAuthStateChanged, 
+            signOut 
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { 
+            getFirestore, 
+            doc, 
+            setDoc, 
+            getDoc, 
+            collection, 
+            onSnapshot, 
+            writeBatch 
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        window.FirebaseModule = {
+            initializeApp,
+            getAuth,
+            signInWithPopup,
+            GoogleAuthProvider,
+            signInWithCustomToken,
+            signInAnonymously,
+            onAuthStateChanged,
+            signOut,
+            getFirestore,
+            doc,
+            setDoc,
+            getDoc,
+            collection,
+            onSnapshot,
+            writeBatch
+        };
+    </script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0fdf4',
+                            100: '#dcfce7',
+                            500: '#10b981',
+                            600: '#059669',
+                            700: '#047857',
+                            800: '#065f46'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Fredoka', 'Noto Sans TC', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            font-family: 'Fredoka', 'Noto Sans TC', sans-serif;
+            background: #f8fafc;
+            color: #1e293b;
+            overflow-x: hidden;
+        }
+
+        .app-container {
+            display: flex;
+            height: 100vh;
+            width: 100vw;
+            overflow: hidden;
+        }
+
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.03);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(16, 185, 129, 0.25);
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(16, 185, 129, 0.5);
+        }
+
+        @keyframes floatSubtle {
+            0%, 100% { transform: translateY(0) rotate(0deg); }
+            50% { transform: translateY(-6px) rotate(2deg); }
+        }
+        @keyframes pulseBorder {
+            0%, 100% { border-color: rgba(239, 68, 68, 0.4); }
+            50% { border-color: rgba(239, 68, 68, 0.9); }
+        }
+
+        .animate-float { animation: floatSubtle 3.5s ease-in-out infinite; }
+        .animate-pulse-border { animation: pulseBorder 1.5s infinite; }
+    </style>
+</head>
+<body class="bg-slate-100 select-none">
+
+<div class="app-container">
+
+    <!-- LEFT SIDEBAR NAVIGATION -->
+    <aside id="sidebar" class="w-64 bg-slate-900 text-slate-300 flex flex-col justify-between border-r border-slate-800 z-30 flex-shrink-0">
+        <div>
+            <!-- Header Brand -->
+            <div class="p-4 border-b border-slate-800 flex items-center gap-3">
+                <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center text-white text-xl shadow-lg shadow-emerald-500/20">
+                    <i class="fa-solid fa-chalkboard-user"></i>
+                </div>
+                <div>
+                    <h1 class="font-black text-sm text-white tracking-wide leading-tight">班級作業訂正系統</h1>
+                    <span id="cloudStatusBadge" class="text-[10px] text-amber-400 font-bold bg-amber-950 border border-amber-800 px-1.5 py-0.5 rounded flex items-center gap-1 w-max mt-0.5 cursor-pointer" onclick="openFirebaseConfigModal()">
+                        <i class="fa-solid fa-hard-drive"></i> 連線初始化中...
+                    </span>
+                </div>
+            </div>
+
+            <!-- Search Bar -->
+            <div class="p-3">
+                <div class="relative">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-xs text-slate-500"></i>
+                    <input type="text" id="sidebarSearch" oninput="handleSearchInput(this.value)" placeholder="搜尋座號或學生姓名..." class="w-full bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded-xl pl-8 pr-3 py-2 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                </div>
+            </div>
+
+            <!-- Navigation Links -->
+            <nav class="px-2 space-y-1">
+                <button onclick="switchView('grid')" id="nav-grid" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-white bg-emerald-600 shadow-md">
+                    <i class="fa-solid fa-border-all text-sm w-5 text-center"></i>
+                    <span>全班總覽看板</span>
+                </button>
+
+                <button onclick="switchView('batch')" id="nav-batch" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-800 transition">
+                    <i class="fa-solid fa-layer-group text-sm w-5 text-center text-blue-400"></i>
+                    <span>批次作業錯題登記</span>
+                </button>
+
+                <button onclick="switchView('leaderboard')" id="nav-leaderboard" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-800 transition">
+                    <i class="fa-solid fa-trophy text-sm w-5 text-center text-yellow-400"></i>
+                    <span>班級學習英雄榜</span>
+                </button>
+            </nav>
+        </div>
+
+        <!-- Sidebar Footer Tools -->
+        <div class="p-3 border-t border-slate-800 space-y-2">
+            <!-- Sync Room Code Banner -->
+            <div onclick="openFirebaseConfigModal()" class="bg-gradient-to-r from-amber-950/80 to-slate-900 border border-amber-500/40 p-2.5 rounded-xl flex items-center justify-between cursor-pointer hover:border-amber-400 transition shadow">
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-key text-amber-400 text-sm"></i>
+                    <div class="text-[10px] text-slate-300">
+                        <div class="font-bold text-amber-300">大螢幕 / 多裝置同步碼</div>
+                        <div id="sidebarRoomCodeDisplay" class="font-mono text-emerald-400 text-xs font-black">default</div>
+                    </div>
+                </div>
+                <span class="text-[10px] text-amber-300 font-bold bg-amber-900/60 px-2 py-0.5 rounded border border-amber-600/50">設定</span>
+            </div>
+
+            <div class="flex items-center justify-between text-[11px] font-bold text-slate-400 px-1">
+                <span>班級名冊管理</span>
+                <span id="sidebarStudentCount" class="text-emerald-400">0 人</span>
+            </div>
+            
+            <div class="grid grid-cols-2 gap-1.5">
+                <button onclick="openAddStudentModal()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-bold py-2 rounded-xl transition flex items-center justify-center gap-1 border border-slate-700">
+                    <i class="fa-solid fa-user-plus text-emerald-400"></i> 新增學生
+                </button>
+                <button onclick="openBatchImportModal()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-bold py-2 rounded-xl transition flex items-center justify-center gap-1 border border-slate-700">
+                    <i class="fa-solid fa-file-import text-blue-400"></i> 批次匯入
+                </button>
+            </div>
+
+            <div class="grid grid-cols-2 gap-1.5">
+                <button onclick="openFirebaseConfigModal()" class="bg-slate-800 hover:bg-slate-700 text-amber-400 text-[11px] font-bold py-2 rounded-xl transition flex items-center justify-center gap-1 border border-slate-700">
+                    <i class="fa-solid fa-gear"></i> 雲端與同步碼
+                </button>
+                <button onclick="exportDataJSON()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-bold py-2 rounded-xl transition flex items-center justify-center gap-1 border border-slate-700">
+                    <i class="fa-solid fa-download text-teal-400"></i> 匯出備份
+                </button>
+            </div>
+
+            <button onclick="confirmPresetReload()" class="w-full bg-slate-800 hover:bg-amber-950 text-amber-400 border border-amber-900/50 text-[11px] font-bold py-2 rounded-xl transition flex items-center justify-center gap-1.5">
+                <i class="fa-solid fa-rotate-right"></i> 載入預設班級名冊 (25人)
+            </button>
+        </div>
+    </aside>
+
+    <!-- RIGHT MAIN WORKSPACE -->
+    <div class="flex-1 flex flex-col h-full overflow-hidden bg-slate-100">
+
+        <!-- TOP CLASSROOM METRICS BAR -->
+        <header class="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between shadow-sm z-20 flex-shrink-0">
+            <div class="flex items-center gap-6">
+                <div class="flex items-center gap-2">
+                    <h2 id="currentViewTitle" class="font-black text-lg text-slate-800">全班作業訂正看板</h2>
+                </div>
+
+                <!-- Quick Filter Buttons -->
+                <div class="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold">
+                    <button onclick="setFilter('all')" id="filter-all" class="px-3 py-1 rounded-lg bg-white text-slate-800 shadow-sm transition">全部 (<span id="cnt-all">0</span>)</button>
+                    <button onclick="setFilter('pending')" id="filter-pending" class="px-3 py-1 rounded-lg text-slate-500 hover:text-slate-800 transition">🚨 尚有未訂正 (<span id="cnt-pending">0</span>)</button>
+                    <button onclick="setFilter('clean')" id="filter-clean" class="px-3 py-1 rounded-lg text-slate-500 hover:text-slate-800 transition">✅ 全部完成 (<span id="cnt-clean">0</span>)</button>
+                </div>
+            </div>
+
+            <!-- Stats Metrics Header -->
+            <div class="flex items-center gap-3 text-xs font-bold">
+                <div class="flex items-center gap-2 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl">
+                    <i class="fa-solid fa-circle-check text-emerald-600 text-base"></i>
+                    <div>
+                        <div class="text-[10px] text-emerald-700 leading-tight">全班訂正率</div>
+                        <div id="statOverallRate" class="text-sm font-black text-emerald-700">100%</div>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-2 bg-red-50 border border-red-200 px-3 py-1.5 rounded-xl">
+                    <i class="fa-solid fa-triangle-exclamation text-red-500 text-base"></i>
+                    <div>
+                        <div class="text-[10px] text-red-600 leading-tight">未訂正總項</div>
+                        <div id="statTotalUncorrected" class="text-sm font-black text-red-600">0 項</div>
+                    </div>
+                </div>
+
+                <!-- Manual Cloud Refresh Sync Button -->
+                <button onclick="forceCloudSync()" title="強制點擊拉取雲端最新資料" class="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 font-extrabold text-xs px-3 py-2 rounded-xl shadow-sm transition flex items-center gap-1.5 active:scale-95">
+                    <i class="fa-solid fa-rotate text-emerald-600"></i>
+                    <span>重新整理同步</span>
+                </button>
+
+                <button onclick="openHistoryModal()" class="bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 font-extrabold text-xs px-3 py-2 rounded-xl shadow-sm transition active:scale-95 flex items-center gap-1.5" title="檢視操作紀錄與一鍵復原">
+                    <i class="fa-solid fa-rotate-left text-blue-500"></i> 歷程
+                </button>
+
+                <button onclick="triggerClassroomCelebration()" class="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-black text-xs px-3 py-2 rounded-xl shadow-md transition active:scale-95 flex items-center gap-1.5">
+                    <i class="fa-solid fa-sparkles"></i> 全班表揚
+                </button>
+            </div>
+        </header>
+
+        <main id="mainViewport" class="flex-1 overflow-y-auto p-6">
+
+            <!-- VIEW 1: CLASS GRID VIEW -->
+            <div id="view-grid" class="space-y-4">
+                <div id="studentsGrid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-4">
+                    <!-- Cards dynamically generated by JS -->
+                </div>
+
+                <div id="emptyNotice" class="hidden bg-white rounded-3xl p-12 text-center text-slate-400 border border-dashed border-slate-300">
+                    <i class="fa-solid fa-user-check text-4xl mb-2 text-emerald-400"></i>
+                    <p class="font-extrabold text-slate-700">此篩選條件下沒有學生資料</p>
+                </div>
+            </div>
+
+            <!-- VIEW 2: BATCH ASSIGNMENT RECORDER -->
+            <div id="view-batch" class="hidden max-w-5xl mx-auto space-y-6">
+                <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-6">
+                    <div class="border-b pb-4">
+                        <h3 class="font-black text-lg text-slate-800 flex items-center gap-2">
+                            <i class="fa-solid fa-layer-group text-blue-500"></i> 批次登記作業錯題 / 退回訂正
+                        </h3>
+                        <p class="text-xs text-slate-500 font-bold mt-1">勾選需要訂正該作業的學生，一鍵登記未訂正項 (+1)</p>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-extrabold text-slate-700 mb-2">快速選擇常用作業項目</label>
+                        <div class="flex flex-wrap gap-2">
+                            <button onclick="setBatchTitle('國語習作')" class="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition">📚 國語習作</button>
+                            <button onclick="setBatchTitle('數學數本 P.20-22')" class="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition">📐 數學數本</button>
+                            <button onclick="setBatchTitle('自然作業簿 L2')" class="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition">🌱 自然作業簿</button>
+                            <button onclick="setBatchTitle('社會考卷訂正')" class="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition">🗺️ 社會考卷</button>
+                            <button onclick="setBatchTitle('英文單字卡寫作')" class="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition">🔤 英文單字</button>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-extrabold text-slate-700 mb-1">自訂作業與錯題名稱</label>
+                        <input type="text" id="batchTitleInput" placeholder="例如：國語第一課聽寫訂正" class="w-full px-4 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-700 focus:ring-2 focus:ring-blue-400 focus:outline-none">
+                    </div>
+
+                    <div>
+                        <div class="flex items-center justify-between mb-3">
+                            <label class="text-xs font-extrabold text-slate-700">選擇學生對象</label>
+                            <div class="flex gap-2">
+                                <button onclick="selectAllBatchCheckboxes(true)" class="text-xs font-bold text-blue-600 hover:underline">全選</button>
+                                <span class="text-slate-300">|</span>
+                                <button onclick="selectAllBatchCheckboxes(false)" class="text-xs font-bold text-slate-500 hover:underline">取消全選</button>
+                            </div>
+                        </div>
+
+                        <div id="batchStudentCheckList" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 max-h-72 overflow-y-auto p-2 bg-slate-50 rounded-2xl border border-slate-200">
+                            <!-- Student checkboxes -->
+                        </div>
+                    </div>
+
+                    <div class="pt-4 border-t flex justify-end">
+                        <button onclick="submitBatchAssignment()" class="bg-blue-600 hover:bg-blue-700 text-white font-black text-sm px-6 py-3 rounded-xl shadow-lg transition active:scale-95 flex items-center gap-2">
+                            <i class="fa-solid fa-paper-plane"></i> 一鍵確認批次發布
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VIEW 4: CLASS LEADERBOARDS -->
+            <div id="view-leaderboard" class="hidden max-w-5xl mx-auto space-y-6">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+                        <div class="flex items-center gap-3 border-b pb-3">
+                            <div class="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center text-xl font-bold">
+                                <i class="fa-solid fa-crown"></i>
+                            </div>
+                            <div>
+                                <h3 class="font-extrabold text-slate-800 text-sm">訂正模範榜</h3>
+                                <p class="text-[11px] text-slate-400">當前 0 項未訂正者</p>
+                            </div>
+                        </div>
+                        <div id="boardClean" class="space-y-2"></div>
+                    </div>
+
+                    <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+                        <div class="flex items-center gap-3 border-b pb-3">
+                            <div class="w-10 h-10 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center text-xl font-bold">
+                                <i class="fa-solid fa-dragon"></i>
+                            </div>
+                            <div>
+                                <h3 class="font-extrabold text-slate-800 text-sm">寵物神獸等級榜</h3>
+                                <p class="text-[11px] text-slate-400">寵物等級最高排名</p>
+                            </div>
+                        </div>
+                        <div id="boardLevel" class="space-y-2"></div>
+                    </div>
+
+                    <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+                        <div class="flex items-center gap-3 border-b pb-3">
+                            <div class="w-10 h-10 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center text-xl font-bold">
+                                <i class="fa-solid fa-bolt"></i>
+                            </div>
+                            <div>
+                                <h3 class="font-extrabold text-slate-800 text-sm">累積勤學王</h3>
+                                <p class="text-[11px] text-slate-400">累積訂正完成數最多</p>
+                            </div>
+                        </div>
+                        <div id="boardCount" class="space-y-2"></div>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+</div>
+
+
+<!-- MODAL 1: ADD SINGLE STUDENT -->
+<div id="modalAddStudent" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4">
+        <div class="flex justify-between items-center border-b pb-3">
+            <h3 class="font-extrabold text-lg text-slate-800">新增班級學生</h3>
+            <button onclick="closeModal('modalAddStudent')" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+        </div>
+        <form onsubmit="submitNewStudent(event)" class="space-y-3">
+            <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">座號</label>
+                <input type="number" id="inputSeat" required min="1" max="60" class="w-full px-3.5 py-2 border rounded-xl font-bold text-slate-700 focus:ring-2 focus:ring-emerald-400 focus:outline-none">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">學生姓名</label>
+                <input type="text" id="inputName" required placeholder="例如：林大明" class="w-full px-3.5 py-2 border rounded-xl font-bold text-slate-700 focus:ring-2 focus:ring-emerald-400 focus:outline-none">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">選擇寵物種類</label>
+                <select id="inputPetType" class="w-full px-3.5 py-2 border rounded-xl font-bold text-slate-700 bg-white">
+                    <option value="hamster">🐹 可愛倉鼠</option>
+                    <option value="shiba">🐕 柴犬</option>
+                    <option value="cat">🐱 橘貓</option>
+                    <option value="rabbit">🐰 垂耳兔</option>
+                    <option value="panda">🐼 胖熊貓</option>
+                    <option value="dragon">🐲 小青龍</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">自訂寵物暱稱 (選填)</label>
+                <input type="text" id="inputPetName" placeholder="例如：麻糬 (留空將自動為您命名)" class="w-full px-3.5 py-2 border rounded-xl font-bold text-slate-700 focus:ring-2 focus:ring-emerald-400 focus:outline-none">
+            </div>
+            <div class="flex gap-2 pt-2">
+                <button type="button" onclick="closeModal('modalAddStudent')" class="w-1/2 bg-slate-100 text-slate-600 font-bold py-2 rounded-xl text-xs">取消</button>
+                <button type="submit" class="w-1/2 bg-emerald-600 text-white font-bold py-2 rounded-xl text-xs shadow">確定新增</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- MODAL 2: BATCH IMPORT STUDENTS -->
+<div id="modalBatchImport" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+        <div class="flex justify-between items-center border-b pb-3">
+            <h3 class="font-extrabold text-lg text-slate-800 flex items-center gap-2">
+                <i class="fa-solid fa-file-import text-blue-500"></i> 批次匯入學生名冊
+            </h3>
+            <button onclick="closeModal('modalBatchImport')" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+        </div>
+        <div class="space-y-3">
+            <p class="text-xs text-slate-500 font-bold leading-relaxed">
+                請在下方文字框貼上學生姓名列表（每行一位學生）。系統會自動依序指派座號，並隨機配對寵物！
+            </p>
+            <textarea id="batchImportTextarea" rows="8" placeholder="例如：&#10;張小明&#10;林雅婷&#10;陳大同&#10;黃怡君" class="w-full p-3.5 border border-slate-200 rounded-xl font-bold text-xs text-slate-700 focus:ring-2 focus:ring-blue-400 focus:outline-none"></textarea>
+            
+            <div class="flex justify-between items-center text-xs font-bold text-slate-500">
+                <span>貼上名單後即可一鍵建立</span>
+            </div>
+        </div>
+        <div class="flex gap-2 pt-2 border-t">
+            <button type="button" onclick="closeModal('modalBatchImport')" class="w-1/2 bg-slate-100 text-slate-600 font-bold py-2.5 rounded-xl text-xs">取消</button>
+            <button type="button" onclick="submitBatchImport()" class="w-1/2 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl text-xs shadow">確認批次匯入</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL 3: STUDENT DETAILS & INDIVIDUAL PET CARE -->
+<div id="modalDetail" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+        <div class="flex justify-between items-center border-b pb-3">
+            <div class="flex items-center gap-2">
+                <span id="detailSeat" class="bg-emerald-100 text-emerald-800 font-black text-xs px-2.5 py-1 rounded-lg">座號 01</span>
+                <h3 id="detailName" class="font-extrabold text-lg text-slate-800">張小明 的寵物與學習面板</h3>
+            </div>
+            <button onclick="closeModal('modalDetail')" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-100">
+            <div class="flex items-center gap-4">
+                <div id="detailPetSvg" class="w-20 h-20 flex-shrink-0"></div>
+                <div>
+                    <div class="flex items-center gap-1.5">
+                        <h4 id="detailPetName" class="font-black text-slate-800 text-base">麻糬</h4>
+                        <button onclick="enablePetNameEdit()" title="修改寵物暱稱" class="text-slate-400 hover:text-amber-600 text-xs p-1 rounded transition">
+                            <i class="fa-solid fa-pen-to-square"></i>
+                        </button>
+                    </div>
+                    <!-- Inline Pet Name Edit Box -->
+                    <div id="petNameEditBox" class="hidden flex items-center gap-1 mt-1">
+                        <input type="text" id="inputEditPetName" class="px-2 py-1 text-xs border border-amber-300 rounded-lg font-bold w-28 focus:outline-none focus:ring-1 focus:ring-amber-500">
+                        <button onclick="saveEditedPetName()" class="bg-amber-500 hover:bg-amber-600 text-white text-xs px-2 py-1 rounded-lg font-bold shadow" title="儲存"><i class="fa-solid fa-check"></i></button>
+                        <button onclick="cancelPetNameEdit()" class="bg-slate-200 hover:bg-slate-300 text-slate-600 text-xs px-2 py-1 rounded-lg font-bold" title="取消"><i class="fa-solid fa-xmark"></i></button>
+                    </div>
+                    <span id="detailPetLevel" class="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 inline-block mt-1">Lv. 1</span>
+                </div>
+            </div>
+
+            <div class="flex flex-col justify-center space-y-2">
+                <button onclick="changeActiveStudentPet()" class="text-xs bg-white hover:bg-slate-100 text-slate-700 font-bold py-1.5 px-3 rounded-xl border shadow-sm transition">
+                    <i class="fa-solid fa-arrows-rotate text-emerald-500"></i> 更換寵物品種
+                </button>
+                <button id="btnFeedPet" onclick="feedActiveStudentPet()" class="text-xs bg-amber-500 hover:bg-amber-600 text-white font-bold py-1.5 px-3 rounded-xl shadow transition">
+                    <i class="fa-solid fa-cookie-bite"></i> 獎勵餵食罐頭 (+20 XP)
+                </button>
+            </div>
+        </div>
+
+        <!-- Add Uncorrected Item Form -->
+        <div class="space-y-2">
+            <label class="block text-xs font-extrabold text-slate-700">為該學生個別登記錯題 / 缺失作業</label>
+            <div class="flex gap-2">
+                <input type="text" id="singleItemTitleInput" placeholder="例如：數學習作 P.12 第3題" class="flex-1 px-3 py-2 border rounded-xl text-xs font-bold">
+                <button onclick="addSingleStudentUncorrected()" class="bg-amber-500 hover:bg-amber-600 text-white font-bold px-4 py-2 rounded-xl text-xs">登記</button>
+            </div>
+        </div>
+
+        <!-- Uncorrected List -->
+        <div>
+            <h4 class="font-extrabold text-xs text-slate-700 mb-2 flex items-center justify-between">
+                <span>🚨 未訂正項目</span>
+                <span id="detailUncorrectedCount" class="text-red-500 font-black">0 項</span>
+            </h4>
+            <div id="detailUncorrectedList" class="space-y-2 max-h-40 overflow-y-auto"></div>
+        </div>
+
+        <div class="pt-3 border-t flex justify-between items-center">
+            <button onclick="confirmDeleteStudent()" class="text-xs text-red-500 hover:underline font-bold">移除此學生</button>
+            <button onclick="closeModal('modalDetail')" class="bg-slate-800 text-white font-bold px-5 py-2 rounded-xl text-xs">關閉</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL 4: FIREBASE CONFIG & SYNC ROOM CODE -->
+<div id="modalFirebaseConfig" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+        <div class="flex justify-between items-center border-b pb-3">
+            <h3 class="font-extrabold text-lg text-slate-800 flex items-center gap-2">
+                <i class="fa-solid fa-cloud-bolt text-amber-500"></i> 雲端同步與大螢幕連線設定
+            </h3>
+            <button onclick="closeModal('modalFirebaseConfig')" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+        </div>
+
+        <!-- Diagnostic Sync Path Info -->
+        <div class="bg-emerald-50 border border-emerald-200 p-3 rounded-2xl flex items-center justify-between text-xs font-bold text-emerald-900">
+            <div class="flex items-center gap-2">
+                <i class="fa-solid fa-database text-emerald-600"></i>
+                <span>雲端專案 ID: <code class="bg-white px-1.5 py-0.5 rounded border border-emerald-300 font-mono text-emerald-700">classpet-c4d99</code></span>
+            </div>
+            <span class="text-[10px] bg-emerald-200 text-emerald-800 px-2 py-0.5 rounded-lg">強制全局鎖定</span>
+        </div>
+
+        <!-- Section A: Room Code (Crucial for Big Screens) -->
+        <div class="bg-amber-50 border border-amber-200 p-4 rounded-2xl space-y-2">
+            <div class="flex items-center gap-2 text-amber-900 font-extrabold text-xs">
+                <i class="fa-solid fa-tv text-amber-600"></i>
+                <span>跨裝置 / 大螢幕免登入同步碼 (Class Room Code)</span>
+            </div>
+            <p class="text-[11px] text-amber-800 font-medium leading-relaxed">
+                電腦與觸控大螢幕設定**相同的同步碼**（例如：<code class="bg-amber-100 px-1 rounded font-bold">class301</code>），兩邊資料即可即時雙向連動！
+            </p>
+            <div class="flex gap-2">
+                <input type="text" id="inputRoomCode" placeholder="請輸入班級同步碼 (例如: class301)" class="flex-1 px-3 py-2 border border-amber-300 rounded-xl font-bold text-xs focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                <button onclick="saveRoomCode()" class="bg-amber-500 hover:bg-amber-600 text-white font-extrabold text-xs px-4 py-2 rounded-xl shadow transition">套用同步碼</button>
+            </div>
+        </div>
+
+        <!-- Section B: Firebase Config -->
+        <div class="space-y-2 pt-2 border-t">
+            <label class="block text-xs font-bold text-slate-700">Firebase Config 代碼設定 (備用進階)</label>
+            <textarea id="firebaseConfigInput" rows="4" placeholder="const firebaseConfig = { apiKey: '...', authDomain: '...' };" class="w-full p-3 border rounded-xl font-mono text-[10px] bg-slate-50 text-slate-700 focus:ring-2 focus:ring-amber-400 focus:outline-none"></textarea>
+        </div>
+
+        <div class="flex gap-2 pt-2 border-t">
+            <button type="button" onclick="closeModal('modalFirebaseConfig')" class="w-1/2 bg-slate-100 text-slate-600 font-bold py-2.5 rounded-xl text-xs">取消</button>
+            <button type="button" onclick="saveFirebaseConfig()" class="w-1/2 bg-slate-800 hover:bg-slate-900 text-white font-bold py-2.5 rounded-xl text-xs shadow">儲存 Firebase 設定</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL 5: CUSTOM CONFIRM DIALOG -->
+<div id="modalConfirm" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl space-y-4 text-center">
+        <div class="w-12 h-12 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center text-xl mx-auto">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+        </div>
+        <h3 id="confirmTitle" class="font-extrabold text-base text-slate-800">確定執行此操作？</h3>
+        <p id="confirmMessage" class="text-xs text-slate-500 font-bold"></p>
+        <div class="flex gap-2 pt-2">
+            <button id="confirmCancelBtn" class="w-1/2 bg-slate-100 text-slate-600 font-bold py-2 rounded-xl text-xs">取消</button>
+            <button id="confirmOkBtn" class="w-1/2 bg-red-600 text-white font-bold py-2 rounded-xl text-xs shadow">確定</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL 6: ACTION HISTORY & UNDO LOG -->
+<div id="modalHistory" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4">
+        <div class="flex justify-between items-center border-b pb-3">
+            <h3 class="font-extrabold text-lg text-slate-800 flex items-center gap-2">
+                <i class="fa-solid fa-rotate-left text-blue-500"></i> 操作歷程與一鍵復原
+            </h3>
+            <button onclick="closeModal('modalHistory')" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+        </div>
+        <p class="text-xs text-slate-500 font-bold leading-relaxed">
+            如不小心誤按或加錯項目，可在下方歷史紀錄中對相應項目點擊「復原」：
+        </p>
+        <div id="historyLogList" class="space-y-2 max-h-72 overflow-y-auto p-2 bg-slate-50 rounded-2xl border border-slate-200">
+            <!-- History items generated dynamically -->
+        </div>
+        <div class="pt-2 border-t flex justify-end">
+            <button onclick="closeModal('modalHistory')" class="bg-slate-800 text-white font-bold px-5 py-2 rounded-xl text-xs">關閉</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    class ClassroomAudio {
+        constructor() { this.ctx = null; }
+        init() { if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)(); }
+        playClick() {
+            try {
+                this.init();
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.frequency.setValueAtTime(500, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(800, this.ctx.currentTime + 0.05);
+                gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.05);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.05);
+            } catch(e) {}
+        }
+        playFanfare() {
+            try {
+                this.init();
+                const notes = [261.63, 329.63, 392.00, 523.25, 659.25, 783.99];
+                notes.forEach((f, i) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.frequency.value = f;
+                    gain.gain.setValueAtTime(0.2, this.ctx.currentTime + i * 0.07);
+                    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + i * 0.07 + 0.2);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(this.ctx.currentTime + i * 0.07);
+                    osc.stop(this.ctx.currentTime + i * 0.07 + 0.2);
+                });
+            } catch(e) {}
+        }
+    }
+    const audio = new ClassroomAudio();
+
+    // Default 25 Roster
+    const PRESET_25_STUDENTS = [
+        { id: 's01', seat: 1, name: '張小明', pet: { type: 'hamster', name: '麻糬', level: 3, xp: 40 }, uncorrected: [{ id: '1', title: '數學習作 P.18' }], completed: 12 },
+        { id: 's02', seat: 2, name: '林雅婷', pet: { type: 'cat', name: '橘子', level: 5, xp: 10 }, uncorrected: [], completed: 20 },
+        { id: 's03', seat: 3, name: '陳大同', pet: { type: 'dog', name: '旺財', level: 2, xp: 80 }, uncorrected: [{ id: '2', title: '國語練寫' }, { id: '3', title: '自然錯題' }], completed: 8 },
+        { id: 's04', seat: 4, name: '黃怡君', pet: { type: 'rabbit', name: '圓圓', level: 4, xp: 50 }, uncorrected: [], completed: 18 },
+        { id: 's05', seat: 5, name: '許家豪', pet: { type: 'shiba', name: '阿柴', level: 3, xp: 90 }, uncorrected: [{ id: '4', title: '英文單字' }], completed: 15 },
+        { id: 's06', seat: 6, name: '趙子龍', pet: { type: 'dragon', name: '小龍', level: 6, xp: 20 }, uncorrected: [], completed: 25 },
+        { id: 's07', seat: 7, name: '孫悟空', pet: { type: 'panda', name: '圓仔', level: 2, xp: 30 }, uncorrected: [{ id: '5', title: '社會測驗' }], completed: 9 },
+        { id: 's08', seat: 8, name: '周杰倫', pet: { type: 'hamster', name: '花生', level: 4, xp: 70 }, uncorrected: [], completed: 19 },
+        { id: 's09', seat: 9, name: '蔡依林', pet: { type: 'cat', name: '咪咪', level: 5, xp: 0 }, uncorrected: [], completed: 22 },
+        { id: 's10', seat: 10, name: '王力宏', pet: { type: 'dog', name: '小黑', level: 1, xp: 50 }, uncorrected: [{ id: '6', title: '數學數本' }], completed: 5 },
+        { id: 's11', seat: 11, name: '郭台銘', pet: { type: 'shiba', name: '金寶', level: 3, xp: 20 }, uncorrected: [], completed: 14 },
+        { id: 's12', seat: 12, name: '李白', pet: { type: 'dragon', name: '神龍', level: 7, xp: 10 }, uncorrected: [], completed: 30 },
+        { id: 's13', seat: 13, name: '杜甫', pet: { type: 'panda', name: '團團', level: 2, xp: 10 }, uncorrected: [{ id: '7', title: '國習 L3' }], completed: 7 },
+        { id: 's14', seat: 14, name: '白居易', pet: { type: 'rabbit', name: '雪球', level: 3, xp: 60 }, uncorrected: [], completed: 13 },
+        { id: 's15', seat: 15, name: '蘇東坡', pet: { type: 'hamster', name: '東東', level: 4, xp: 80 }, uncorrected: [{ id: '8', title: '作文修訂' }], completed: 16 },
+        { id: 's16', seat: 16, name: '曾國藩', pet: { type: 'shiba', name: '勇士', level: 2, xp: 40 }, uncorrected: [], completed: 11 },
+        { id: 's17', seat: 17, name: '鄭成功', pet: { type: 'dragon', name: '海龍', level: 5, xp: 30 }, uncorrected: [], completed: 21 },
+        { id: 's18', seat: 18, name: '沈復', pet: { type: 'cat', name: '花花', level: 1, xp: 90 }, uncorrected: [{ id: '9', title: '自然學習單' }], completed: 4 },
+        { id: 's19', seat: 19, name: '胡適', pet: { type: 'panda', name: '墨寶', level: 3, xp: 30 }, uncorrected: [], completed: 12 },
+        { id: 's20', seat: 20, name: '徐志摩', pet: { type: 'rabbit', name: '康橋', level: 4, xp: 10 }, uncorrected: [], completed: 17 },
+        { id: 's21', seat: 21, name: '魯迅', pet: { type: 'dog', name: '阿Q', level: 2, xp: 70 }, uncorrected: [{ id: '10', title: '數學考卷' }], completed: 8 },
+        { id: 's22', seat: 22, name: '朱自清', pet: { type: 'hamster', name: '背影', level: 3, xp: 50 }, uncorrected: [], completed: 13 },
+        { id: 's23', seat: 23, name: '冰心', pet: { type: 'cat', name: '繁星', level: 4, xp: 90 }, uncorrected: [], completed: 19 },
+        { id: 's24', seat: 24, name: '錢鍾書', pet: { type: 'shiba', name: '圍城', level: 5, xp: 40 }, uncorrected: [], completed: 23 },
+        { id: 's25', seat: 25, name: '林語堂', pet: { type: 'dragon', name: '幽默', level: 6, xp: 10 }, uncorrected: [], completed: 27 }
+    ];
+
+    // Absolute FIXED Firebase Config to ensure PC & TV hit the exact same backend!
+    const DEFAULT_FIREBASE_CONFIG = {
+        apiKey: "AIzaSyAtHr5dUAcb4TmQJlUR0ZfzukWFfMmDXWg",
+        authDomain: "classpet-c4d99.firebaseapp.com",
+        projectId: "classpet-c4d99",
+        storageBucket: "classpet-c4d99.firebasestorage.app",
+        messagingSenderId: "997833147043",
+        appId: "1:997833147043:web:bd0bae252279ae77ac7516",
+        measurementId: "G-1SE390GK6H"
+    };
+
+    let state = {
+        students: [],
+        currentView: 'grid',
+        currentFilter: 'all',
+        searchQuery: '',
+        activeStudentId: null,
+        user: null,
+        roomCode: (localStorage.getItem('pet_study_quest_room_code') || 'default').toLowerCase().trim(),
+        isCloudConnected: false,
+        history: []
+    };
+
+    let firebaseApp = null;
+    let db = null;
+    let auth = null;
+    let unsubscribeCloudSnapshot = null;
+
+    window.onload = function() {
+        loadLocalData();
+        updateRoomCodeUI();
+        initFirebase();
+        render();
+    };
+
+    function updateRoomCodeUI() {
+        const display = document.getElementById('sidebarRoomCodeDisplay');
+        if (display) display.innerText = state.roomCode;
+        const input = document.getElementById('inputRoomCode');
+        if (input) input.value = state.roomCode;
+    }
+
+    function initFirebase() {
+        let config = null;
+
+        // 1. Check custom user config from localStorage
+        const savedConfig = localStorage.getItem('pet_study_quest_firebase_config');
+        if (savedConfig) {
+            try { config = JSON.parse(savedConfig); } catch(e) {}
+        }
+
+        // 2. ALWAYS fall back to DEFAULT_FIREBASE_CONFIG (classpet-c4d99)
+        // This prevents dynamic sandbox env vars from causing channel mismatch between PC and TV
+        if (!config) config = DEFAULT_FIREBASE_CONFIG;
+        if (!config || !window.FirebaseModule) return;
+
+        try {
+            const { initializeApp, getAuth, getFirestore, onAuthStateChanged, signInAnonymously } = window.FirebaseModule;
+            firebaseApp = initializeApp(config);
+            db = getFirestore(firebaseApp);
+            auth = getAuth(firebaseApp);
+
+            // Anonymous auth fallback guarantees sync without login for Big Screens
+            signInAnonymously(auth).catch(() => {});
+
+            onAuthStateChanged(auth, user => {
+                state.user = user;
+                state.isCloudConnected = true;
+                updateCloudUI(true, `同步碼: ${state.roomCode}`);
+                subscribeToCloudSync();
+            });
+        } catch(e) {
+            console.error('Firebase initialization failed:', e);
+            updateCloudUI(false, '離線模式');
+        }
+    }
+
+    function updateCloudUI(isConnected, label) {
+        const badge = document.getElementById('cloudStatusBadge');
+
+        if (isConnected) {
+            badge.className = 'text-[10px] text-emerald-400 font-bold bg-emerald-950 border border-emerald-800 px-1.5 py-0.5 rounded flex items-center gap-1 w-max mt-0.5 cursor-pointer';
+            badge.innerHTML = `<i class="fa-solid fa-cloud-check"></i> 雲端同步 (${state.roomCode})`;
+        } else {
+            badge.className = 'text-[10px] text-amber-400 font-bold bg-amber-950 border border-amber-800 px-1.5 py-0.5 rounded flex items-center gap-1 w-max mt-0.5 cursor-pointer';
+            badge.innerHTML = '<i class="fa-solid fa-hard-drive"></i> 本地模式';
+        }
+    }
+
+    // STRICT UNIFIED SYNC PATH
+    function getTargetSyncDocPath() {
+        const sanitizedRoom = (state.roomCode || 'default').replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase();
+        return ['classpet_rooms', sanitizedRoom, 'students'];
+    }
+
+    function subscribeToCloudSync() {
+        if (!db || !window.FirebaseModule) return;
+        const { collection, doc, onSnapshot } = window.FirebaseModule;
+
+        const path = getTargetSyncDocPath();
+        const studentsCol = collection(db, path[0], path[1], path[2]);
+
+        if (unsubscribeCloudSnapshot) unsubscribeCloudSnapshot();
+
+        unsubscribeCloudSnapshot = onSnapshot(studentsCol, snapshot => {
+            if (!snapshot.empty) {
+                const cloudStudents = [];
+                snapshot.forEach(docSnap => cloudStudents.push(docSnap.data()));
+                state.students = cloudStudents.sort((a,b) => a.seat - b.seat);
+                localStorage.setItem('pet_study_quest_desktop_data', JSON.stringify(state.students));
+                render();
+            } else if (state.students && state.students.length > 0) {
+                // Initial upload to new room code
+                saveToCloud();
+            }
+        }, err => {
+            console.error("Cloud snapshot listener error:", err);
+            showToast('⚠️ 雲端連線異常，請檢查網路');
+        });
+    }
+
+    function saveToCloud() {
+        if (!db || !window.FirebaseModule) return;
+        const { doc, writeBatch } = window.FirebaseModule;
+
+        try {
+            const batch = writeBatch(db);
+            const path = getTargetSyncDocPath();
+
+            state.students.forEach(s => {
+                const studentRef = doc(db, path[0], path[1], path[2], s.id);
+                batch.set(studentRef, s);
+            });
+            batch.commit().catch(err => console.error('Cloud save batch failed:', err));
+        } catch(e) {
+            console.error('Save to cloud failed:', e);
+        }
+    }
+
+    function forceCloudSync() {
+        audio.playClick();
+        if (subscribeToCloudSync) {
+            subscribeToCloudSync();
+            showToast('✨ 已重新觸發雲端同步！');
+        }
+    }
+
+    function saveRoomCode() {
+        const val = document.getElementById('inputRoomCode').value.trim().toLowerCase();
+        if (!val) {
+            showToast('⚠️ 請輸入有效的同步碼');
+            return;
+        }
+        state.roomCode = val;
+        localStorage.setItem('pet_study_quest_room_code', val);
+        updateRoomCodeUI();
+        subscribeToCloudSync();
+        closeModal('modalFirebaseConfig');
+        audio.playFanfare();
+        showToast(`✨ 已切換至班級同步碼：${val}`);
+    }
+
+    function saveData() {
+        localStorage.setItem('pet_study_quest_desktop_data', JSON.stringify(state.students));
+        if (state.isCloudConnected) {
+            saveToCloud();
+        }
+    }
+
+    function loadLocalData() {
+        const saved = localStorage.getItem('pet_study_quest_desktop_data');
+        if (saved) {
+            try { state.students = JSON.parse(saved); } catch(e) { state.students = PRESET_25_STUDENTS; }
+        } else {
+            state.students = PRESET_25_STUDENTS;
+        }
+    }
+
+    function renderPetSVG(type) {
+        const svgs = {
+            hamster: `<svg viewBox="0 0 100 100" class="w-full h-full drop-shadow"><circle cx="50" cy="55" r="35" fill="#fdba74"/><circle cx="30" cy="25" r="12" fill="#fdba74"/><circle cx="30" cy="25" r="7" fill="#f43f5e"/><circle cx="70" cy="25" r="12" fill="#fdba74"/><circle cx="70" cy="25" r="7" fill="#f43f5e"/><circle cx="40" cy="50" r="5" fill="#1e293b"/><circle cx="60" cy="50" r="5" fill="#1e293b"/><ellipse cx="50" cy="60" rx="6" ry="4" fill="#f43f5e"/><circle cx="32" cy="58" r="6" fill="#fca5a5" opacity="0.6"/><circle cx="68" cy="58" r="6" fill="#fca5a5" opacity="0.6"/></svg>`,
+            shiba: `<svg viewBox="0 0 100 100" class="w-full h-full drop-shadow"><circle cx="50" cy="55" r="35" fill="#eab308"/><path d="M 20 30 L 35 15 L 42 35 Z" fill="#eab308"/><path d="M 80 30 L 65 15 L 58 35 Z" fill="#eab308"/><path d="M 35 55 Q 50 40 65 55 Q 50 85 35 55" fill="#fef08a"/><circle cx="40" cy="48" r="4" fill="#1e293b"/><circle cx="60" cy="48" r="4" fill="#1e293b"/><polygon points="46,56 54,56 50,62" fill="#1e293b"/></svg>`,
+            cat: `<svg viewBox="0 0 100 100" class="w-full h-full drop-shadow"><circle cx="50" cy="55" r="35" fill="#fb923c"/><polygon points="20,35 32,15 45,30" fill="#fb923c"/><polygon points="80,35 68,15 55,30" fill="#fb923c"/><polygon points="24,33 32,20 40,30" fill="#fca5a5"/><polygon points="76,33 68,20 60,30" fill="#fca5a5"/><ellipse cx="38" cy="50" rx="4" ry="6" fill="#065f46"/><ellipse cx="62" cy="50" rx="4" ry="6" fill="#065f46"/><polygon points="47,58 53,58 50,62" fill="#f43f5e"/></svg>`,
+            rabbit: `<svg viewBox="0 0 100 100" class="w-full h-full drop-shadow"><ellipse cx="38" cy="22" rx="8" ry="22" fill="#f1f5f9"/><ellipse cx="38" cy="22" rx="4" ry="16" fill="#f43f5e" opacity="0.5"/><ellipse cx="62" cy="22" rx="8" ry="22" fill="#f1f5f9"/><ellipse cx="62" cy="22" rx="4" ry="16" fill="#f43f5e" opacity="0.5"/><circle cx="50" cy="58" r="32" fill="#f1f5f9"/><circle cx="38" cy="54" r="4" fill="#1e293b"/><circle cx="62" cy="54" r="4" fill="#1e293b"/><ellipse cx="50" cy="62" rx="4" ry="3" fill="#f43f5e"/><circle cx="30" cy="60" r="5" fill="#fca5a5" opacity="0.5"/><circle cx="70" cy="60" r="5" fill="#fca5a5" opacity="0.5"/></svg>`,
+            panda: `<svg viewBox="0 0 100 100" class="w-full h-full drop-shadow"><circle cx="50" cy="55" r="35" fill="#ffffff"/><circle cx="25" cy="28" r="12" fill="#1e293b"/><circle cx="75" cy="25" r="12" fill="#1e293b"/><ellipse cx="38" cy="50" rx="8" ry="6" fill="#1e293b" transform="rotate(-15 38 50)"/><ellipse cx="62" cy="50" rx="8" ry="6" fill="#1e293b" transform="rotate(15 62 50)"/><circle cx="38" cy="50" r="3" fill="#ffffff"/><circle cx="62" cy="50" r="3" fill="#ffffff"/><ellipse cx="50" cy="62" rx="5" ry="3" fill="#1e293b"/></svg>`,
+            dragon: `<svg viewBox="0 0 100 100" class="w-full h-full drop-shadow"><path d="M 30 25 Q 20 10 15 20 M 70 25 Q 80 10 85 20" stroke="#10b981" stroke-width="6" fill="none" stroke-linecap="round"/><circle cx="50" cy="55" r="35" fill="#34d399"/><circle cx="38" cy="48" r="5" fill="#064e3b"/><circle cx="62" cy="48" r="5" fill="#064e3b"/><path d="M 42 62 Q 50 68 58 62" stroke="#064e3b" stroke-width="3" fill="none"/></svg>`
+        };
+        return svgs[type] || svgs.hamster;
+    }
+
+    function render() {
+        const total = state.students.length;
+        const pendingList = state.students.filter(s => s.uncorrected && s.uncorrected.length > 0);
+        const cleanList = state.students.filter(s => !s.uncorrected || s.uncorrected.length === 0);
+        const totalUncorrected = state.students.reduce((acc, s) => acc + (s.uncorrected ? s.uncorrected.length : 0), 0);
+
+        const cntAll = document.getElementById('cnt-all');
+        const cntPending = document.getElementById('cnt-pending');
+        const cntClean = document.getElementById('cnt-clean');
+        const sideCount = document.getElementById('sidebarStudentCount');
+
+        if (cntAll) cntAll.innerText = total;
+        if (cntPending) cntPending.innerText = pendingList.length;
+        if (cntClean) cntClean.innerText = cleanList.length;
+        if (sideCount) sideCount.innerText = `${total} 人`;
+
+        const overallRate = total > 0 ? Math.round((cleanList.length / total) * 100) : 100;
+        const statRate = document.getElementById('statOverallRate');
+        const statUncorrected = document.getElementById('statTotalUncorrected');
+
+        if (statRate) statRate.innerText = `${overallRate}%`;
+        if (statUncorrected) statUncorrected.innerText = `${totalUncorrected} 項`;
+
+        if (state.currentView === 'grid') renderGrid();
+        else if (state.currentView === 'batch') renderBatchChecklist();
+        else if (state.currentView === 'leaderboard') renderLeaderboards();
+    }
+
+    function renderGrid() {
+        const grid = document.getElementById('studentsGrid');
+        const emptyNotice = document.getElementById('emptyNotice');
+        if (!grid) return;
+
+        let filtered = state.students.slice().sort((a,b) => a.seat - b.seat);
+
+        if (state.currentFilter === 'pending') {
+            filtered = filtered.filter(s => s.uncorrected && s.uncorrected.length > 0);
+        } else if (state.currentFilter === 'clean') {
+            filtered = filtered.filter(s => !s.uncorrected || s.uncorrected.length === 0);
+        }
+
+        if (state.searchQuery) {
+            const q = state.searchQuery.toLowerCase();
+            filtered = filtered.filter(s => 
+                s.name.toLowerCase().includes(q) || 
+                s.seat.toString().includes(q)
+            );
+        }
+
+        if (filtered.length === 0) {
+            grid.innerHTML = '';
+            if (emptyNotice) emptyNotice.classList.remove('hidden');
+            return;
+        }
+
+        if (emptyNotice) emptyNotice.classList.add('hidden');
+
+        grid.innerHTML = filtered.map(s => {
+            const count = s.uncorrected ? s.uncorrected.length : 0;
+            const isClean = count === 0;
+            const reqXp = s.pet.level * 100;
+            const xpPercent = Math.min(100, Math.round((s.pet.xp / reqXp) * 100));
+
+            return `
+            <div class="bg-white rounded-3xl p-4 border transition-all duration-200 hover:shadow-lg flex flex-col justify-between ${isClean ? 'border-emerald-200' : 'border-red-300 animate-pulse-border'}">
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="bg-slate-100 text-slate-700 font-black text-xs px-2.5 py-1 rounded-xl">座號 ${s.seat < 10 ? '0' + s.seat : s.seat}</span>
+                        <span class="${isClean ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'} text-[11px] font-black px-2 py-0.5 rounded-lg flex items-center gap-1">
+                            ${isClean ? '<i class="fa-solid fa-check"></i> 全部完成' : `<i class="fa-solid fa-triangle-exclamation"></i> 缺 ${count} 項`}
+                        </span>
+                    </div>
+
+                    <div class="flex items-center gap-3 my-2 cursor-pointer" onclick="openStudentDetail('${s.id}')">
+                        <div class="w-14 h-14 flex-shrink-0 animate-float">
+                            ${renderPetSVG(s.pet.type)}
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <h3 class="font-extrabold text-sm text-slate-800 truncate">${s.name}</h3>
+                            <p class="text-[11px] font-bold text-amber-600 truncate">${s.pet.name} (Lv.${s.pet.level})</p>
+                            <div class="w-full bg-slate-100 h-1.5 rounded-full mt-1 overflow-hidden">
+                                <div class="bg-amber-400 h-full rounded-full transition-all duration-300" style="width: ${xpPercent}%"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    ${count > 0 ? `
+                        <div class="mt-2 space-y-1 max-h-24 overflow-y-auto pr-1">
+                            ${s.uncorrected.map(u => `
+                                <div class="text-[11px] font-bold text-red-600 bg-red-50/70 border border-red-100 px-2 py-1 rounded-lg flex justify-between items-center">
+                                    <span class="truncate">${u.title}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    ` : `
+                        <div class="mt-2 text-[11px] text-emerald-600 font-bold bg-emerald-50/50 p-2 rounded-xl text-center">
+                            ✨ 寵物快樂成長中
+                        </div>
+                    `}
+                </div>
+
+                <div class="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between gap-1">
+                    <button onclick="quickAdjust('${s.id}', -1)" ${count === 0 ? 'disabled class="opacity-40 bg-slate-100 text-slate-400 font-bold px-2.5 py-1.5 rounded-xl text-xs w-1/2 flex items-center justify-center gap-1 cursor-not-allowed"' : 'class="bg-emerald-500 hover:bg-emerald-600 text-white font-black px-2.5 py-1.5 rounded-xl text-xs w-1/2 flex items-center justify-center gap-1 shadow transition active:scale-95"'}>
+                        <i class="fa-solid fa-check"></i> 訂正-1
+                    </button>
+                    <button onclick="quickAdjust('${s.id}', 1)" class="bg-red-500 hover:bg-red-600 text-white font-black px-2.5 py-1.5 rounded-xl text-xs w-1/2 flex items-center justify-center gap-1 shadow transition active:scale-95">
+                        <i class="fa-solid fa-plus"></i> 缺失+1
+                    </button>
+                </div>
+            </div>
+            `;
+        }).join('');
+    }
+
+    function pushHistory(description, rollbackFn) {
+        const record = {
+            id: 'hist_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+            description,
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+            rollbackFn
+        };
+        state.history.unshift(record);
+        if (state.history.length > 25) state.history.pop();
+    }
+
+    function undoSpecificAction(historyId) {
+        const idx = state.history.findIndex(h => h.id === historyId);
+        if (idx === -1) return;
+
+        const record = state.history[idx];
+        if (typeof record.rollbackFn === 'function') {
+            record.rollbackFn();
+            state.history.splice(idx, 1);
+            saveData();
+            render();
+            renderHistoryLog();
+            audio.playClick();
+            showToast(`已成功復原：「${record.description}」`);
+        }
+    }
+
+    function openHistoryModal() {
+        renderHistoryLog();
+        document.getElementById('modalHistory').classList.remove('hidden');
+    }
+
+    function renderHistoryLog() {
+        const container = document.getElementById('historyLogList');
+        if (!state.history || state.history.length === 0) {
+            container.innerHTML = `<p class="text-xs text-slate-400 font-bold text-center py-4">目前尚無操作紀錄</p>`;
+            return;
+        }
+
+        container.innerHTML = state.history.map(item => `
+            <div class="bg-white border border-slate-200 p-2.5 rounded-xl text-xs font-bold flex items-center justify-between shadow-sm">
+                <div class="flex flex-col">
+                    <span class="text-slate-800">${item.description}</span>
+                    <span class="text-[10px] text-slate-400">${item.time}</span>
+                </div>
+                <button onclick="undoSpecificAction('${item.id}')" class="bg-amber-500 hover:bg-amber-600 text-white font-bold px-2.5 py-1 rounded-lg text-xs shadow transition active:scale-95 flex items-center gap-1">
+                    <i class="fa-solid fa-rotate-left"></i> 復原
+                </button>
+            </div>
+        `).join('');
+    }
+
+    function quickAdjust(id, delta) {
+        audio.playClick();
+        const student = state.students.find(s => s.id === id);
+        if (!student) return;
+
+        if (!student.uncorrected) student.uncorrected = [];
+
+        if (delta > 0) {
+            const newItem = { id: Date.now().toString(), title: '未訂正作業項目' };
+            student.uncorrected.push(newItem);
+
+            pushHistory(`為【${student.seat}號 ${student.name}】新增 1 項未訂正`, () => {
+                const itemIdx = student.uncorrected.findIndex(i => i.id === newItem.id);
+                if (itemIdx !== -1) student.uncorrected.splice(itemIdx, 1);
+            });
+
+            showToast(`已為 ${student.name} 新增 1 項未訂正`, () => undoSpecificAction(state.history[0]?.id));
+        } else if (delta < 0 && student.uncorrected.length > 0) {
+            const poppedItem = student.uncorrected.pop();
+            student.completed = (student.completed || 0) + 1;
+            student.pet.xp += 25;
+            
+            let leveledUp = false;
+            const reqXp = student.pet.level * 100;
+            if (student.pet.xp >= reqXp) {
+                student.pet.xp -= reqXp;
+                student.pet.level += 1;
+                leveledUp = true;
+                showToast(`🎉 ${student.name} 的寵物 ${student.pet.name} 升至 Lv.${student.pet.level}！`, () => undoSpecificAction(state.history[0]?.id));
+            } else {
+                showToast(`已完成【${student.name}】1 項訂正 (+25 XP)`, () => undoSpecificAction(state.history[0]?.id));
+            }
+
+            pushHistory(`完成【${student.seat}號 ${student.name}】的訂正（${poppedItem.title}）`, () => {
+                student.uncorrected.push(poppedItem);
+                student.completed = Math.max(0, (student.completed || 0) - 1);
+                student.pet.xp -= 25;
+                if (leveledUp) {
+                    student.pet.level = Math.max(1, student.pet.level - 1);
+                    student.pet.xp += (student.pet.level * 100);
+                }
+            });
+
+            audio.playFanfare();
+        }
+
+        saveData();
+        render();
+    }
+
+    function feedActiveStudentPet() {
+        const student = state.students.find(s => s.id === state.activeStudentId);
+        if (!student) return;
+
+        student.pet.xp += 20;
+        const reqXp = student.pet.level * 100;
+
+        if (student.pet.xp >= reqXp) {
+            student.pet.xp -= reqXp;
+            student.pet.level += 1;
+            audio.playFanfare();
+            showToast(`🎉 寵物 ${student.pet.name} 順利升到 Lv.${student.pet.level}！`);
+        } else {
+            audio.playClick();
+            showToast(`已餵食寵物 ${student.pet.name}！經驗值 +20 XP`);
+        }
+
+        saveData();
+        openStudentDetail(state.activeStudentId);
+        render();
+    }
+
+    function renderBatchChecklist() {
+        const container = document.getElementById('batchStudentCheckList');
+        if (!container) return;
+        container.innerHTML = state.students.slice().sort((a,b) => a.seat - b.seat).map(s => `
+            <label class="flex items-center gap-2 p-2 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-700 cursor-pointer hover:bg-blue-50/50">
+                <input type="checkbox" value="${s.id}" class="batch-chk text-blue-600 rounded">
+                <span>【${s.seat}號】${s.name}</span>
+            </label>
+        `).join('');
+    }
+
+    function setBatchTitle(title) {
+        document.getElementById('batchTitleInput').value = title;
+        audio.playClick();
+    }
+
+    function selectAllBatchCheckboxes(check) {
+        document.querySelectorAll('.batch-chk').forEach(chk => chk.checked = check);
+        audio.playClick();
+    }
+
+    function submitBatchAssignment() {
+        const title = document.getElementById('batchTitleInput').value.trim();
+        if (!title) {
+            showToast('⚠️ 請先輸入作業或錯題名稱！');
+            return;
+        }
+
+        const checkedBoxes = document.querySelectorAll('.batch-chk:checked');
+        if (checkedBoxes.length === 0) {
+            showToast('⚠️ 請至少勾選一位學生！');
+            return;
+        }
+
+        checkedBoxes.forEach(chk => {
+            const student = state.students.find(s => s.id === chk.value);
+            if (student) {
+                if (!student.uncorrected) student.uncorrected = [];
+                student.uncorrected.push({ id: Date.now().toString() + Math.random(), title });
+            }
+        });
+
+        saveData();
+        render();
+        audio.playFanfare();
+        showToast(`已成功為 ${checkedBoxes.length} 位學生登記未訂正項！`);
+    }
+
+    function openBatchImportModal() {
+        document.getElementById('batchImportTextarea').value = '';
+        document.getElementById('modalBatchImport').classList.remove('hidden');
+    }
+
+    function submitBatchImport() {
+        const rawText = document.getElementById('batchImportTextarea').value.trim();
+        if (!rawText) {
+            showToast('⚠️ 請輸入或貼上學生姓名列表！');
+            return;
+        }
+
+        const names = rawText.split('\n').map(n => n.replace(/^[0-9\s、.]+/, '').trim()).filter(n => n.length > 0);
+        if (names.length === 0) {
+            showToast('⚠️ 未能解析出有效的姓名！');
+            return;
+        }
+
+        const petTypes = ['hamster', 'shiba', 'cat', 'rabbit', 'panda', 'dragon'];
+        const petNames = ['麻糬', '橘子', '旺財', '圓圓', '阿柴', '小龍', '圓仔', '花生', '咪咪', '小黑'];
+
+        const newStudents = names.map((name, idx) => {
+            const randomPetType = petTypes[Math.floor(Math.random() * petTypes.length)];
+            const randomPetName = petNames[Math.floor(Math.random() * petNames.length)];
+            return {
+                id: 's_' + Date.now() + '_' + idx,
+                seat: idx + 1,
+                name: name,
+                pet: { type: randomPetType, name: randomPetName, level: 1, xp: 0 },
+                uncorrected: [],
+                completed: 0
+            };
+        });
+
+        state.students = newStudents;
+        saveData();
+        closeModal('modalBatchImport');
+        render();
+        audio.playFanfare();
+        showToast(`🎉 已成功匯入 ${newStudents.length} 位學生名冊！`);
+    }
+
+    function renderLeaderboards() {
+        const cleanList = state.students.filter(s => !s.uncorrected || s.uncorrected.length === 0);
+        const boardClean = document.getElementById('boardClean');
+        if (boardClean) {
+            boardClean.innerHTML = cleanList.length ? cleanList.map(s => `
+                <div class="bg-emerald-50/80 border border-emerald-200 p-2.5 rounded-2xl flex items-center justify-between shadow-sm hover:shadow transition">
+                    <div class="flex items-center gap-2.5">
+                        <div class="w-8 h-8 flex-shrink-0">
+                            ${renderPetSVG(s.pet.type)}
+                        </div>
+                        <div>
+                            <div class="font-extrabold text-xs text-slate-800">【${s.seat < 10 ? '0' + s.seat : s.seat}號】${s.name}</div>
+                            <div class="text-[10px] font-bold text-emerald-600">${s.pet.name} (Lv.${s.pet.level})</div>
+                        </div>
+                    </div>
+                    <span class="bg-emerald-500 text-white font-black text-[10px] px-2 py-0.5 rounded-lg flex items-center gap-1 shadow-sm">
+                        <i class="fa-solid fa-circle-check"></i> 零缺繳
+                    </span>
+                </div>
+            `).join('') : '<div class="text-xs text-slate-400 font-bold text-center py-6">目前尚無全清空的同學，繼續加油！</div>';
+        }
+
+        const levelSorted = state.students.slice().sort((a,b) => (b.pet.level * 1000 + b.pet.xp) - (a.pet.level * 1000 + a.pet.xp)).slice(0, 10);
+        const boardLevel = document.getElementById('boardLevel');
+        if (boardLevel) {
+            const rankBadges = [
+                '<span class="w-6 h-6 rounded-full bg-amber-400 text-white font-black text-xs flex items-center justify-center shadow">1</span>',
+                '<span class="w-6 h-6 rounded-full bg-slate-300 text-slate-800 font-black text-xs flex items-center justify-center shadow">2</span>',
+                '<span class="w-6 h-6 rounded-full bg-amber-700 text-white font-black text-xs flex items-center justify-center shadow">3</span>'
+            ];
+            boardLevel.innerHTML = levelSorted.map((s, idx) => {
+                const badge = rankBadges[idx] || `<span class="w-6 h-6 rounded-full bg-slate-100 text-slate-500 font-extrabold text-xs flex items-center justify-center">${idx + 1}</span>`;
+                return `
+                    <div class="bg-amber-50/80 border border-amber-200 p-2.5 rounded-2xl flex items-center justify-between shadow-sm hover:shadow transition">
+                        <div class="flex items-center gap-2.5">
+                            ${badge}
+                            <div class="w-8 h-8 flex-shrink-0">
+                                ${renderPetSVG(s.pet.type)}
+                            </div>
+                            <div>
+                                <div class="font-extrabold text-xs text-slate-800">${s.name} <span class="text-[10px] text-slate-400 font-bold">(${s.seat}號)</span></div>
+                                <div class="text-[10px] font-bold text-amber-600">${s.pet.name}</div>
+                            </div>
+                        </div>
+                        <span class="bg-amber-500 text-white font-black text-[11px] px-2.5 py-0.5 rounded-xl shadow-sm">
+                            Lv. ${s.pet.level}
+                        </span>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        const countSorted = state.students.slice().sort((a,b) => (b.completed || 0) - (a.completed || 0)).slice(0, 10);
+        const boardCount = document.getElementById('boardCount');
+        if (boardCount) {
+            const rankBadges = [
+                '<span class="w-6 h-6 rounded-full bg-amber-400 text-white font-black text-xs flex items-center justify-center shadow">1</span>',
+                '<span class="w-6 h-6 rounded-full bg-slate-300 text-slate-800 font-black text-xs flex items-center justify-center shadow">2</span>',
+                '<span class="w-6 h-6 rounded-full bg-amber-700 text-white font-black text-xs flex items-center justify-center shadow">3</span>'
+            ];
+            boardCount.innerHTML = countSorted.map((s, idx) => {
+                const badge = rankBadges[idx] || `<span class="w-6 h-6 rounded-full bg-slate-100 text-slate-500 font-extrabold text-xs flex items-center justify-center">${idx + 1}</span>`;
+                return `
+                    <div class="bg-blue-50/80 border border-blue-200 p-2.5 rounded-2xl flex items-center justify-between shadow-sm hover:shadow transition">
+                        <div class="flex items-center gap-2.5">
+                            ${badge}
+                            <div class="w-8 h-8 flex-shrink-0">
+                                ${renderPetSVG(s.pet.type)}
+                            </div>
+                            <div>
+                                <div class="font-extrabold text-xs text-slate-800">${s.name} <span class="text-[10px] text-slate-400 font-bold">(${s.seat}號)</span></div>
+                                <div class="text-[10px] font-bold text-blue-600">寵物：${s.pet.name}</div>
+                            </div>
+                        </div>
+                        <span class="bg-blue-600 text-white font-black text-[11px] px-2.5 py-0.5 rounded-xl shadow-sm">
+                            ${s.completed || 0} 題
+                        </span>
+                    </div>
+                `;
+            }).join('');
+        }
+    }
+
+    function switchView(view) {
+        audio.playClick();
+        state.currentView = view;
+        document.querySelectorAll('.nav-item').forEach(el => {
+            el.classList.remove('bg-emerald-600', 'text-white', 'shadow-md');
+            el.classList.add('text-slate-400', 'hover:text-white', 'hover:bg-slate-800');
+        });
+
+        const activeNav = document.getElementById(`nav-${view}`);
+        if (activeNav) {
+            activeNav.classList.add('bg-emerald-600', 'text-white', 'shadow-md');
+            activeNav.classList.remove('text-slate-400');
+        }
+
+        document.getElementById('view-grid').classList.add('hidden');
+        document.getElementById('view-batch').classList.add('hidden');
+        document.getElementById('view-leaderboard').classList.add('hidden');
+
+        document.getElementById(`view-${view}`).classList.remove('hidden');
+
+        const titles = {
+            grid: '全班作業訂正看板',
+            batch: '批次作業錯題登記',
+            leaderboard: '班級學習英雄榜'
+        };
+        document.getElementById('currentViewTitle').innerText = titles[view];
+
+        render();
+    }
+
+    function setFilter(filter) {
+        audio.playClick();
+        state.currentFilter = filter;
+        ['all', 'pending', 'clean'].forEach(f => {
+            const btn = document.getElementById(`filter-${f}`);
+            if (btn) {
+                if (f === filter) {
+                    btn.className = 'px-3 py-1 rounded-lg bg-white text-slate-800 shadow-sm transition';
+                } else {
+                    btn.className = 'px-3 py-1 rounded-lg text-slate-500 hover:text-slate-800 transition';
+                }
+            }
+        });
+        render();
+    }
+
+    function handleSearchInput(val) {
+        state.searchQuery = val.trim();
+        render();
+    }
+
+    function openStudentDetail(id) {
+        audio.playClick();
+        state.activeStudentId = id;
+        const student = state.students.find(s => s.id === id);
+        if (!student) return;
+
+        document.getElementById('detailSeat').innerText = `座號 ${student.seat < 10 ? '0' + student.seat : student.seat}`;
+        document.getElementById('detailName').innerText = `${student.name} 的寵物與學習面板`;
+        document.getElementById('detailPetSvg').innerHTML = renderPetSVG(student.pet.type);
+        document.getElementById('detailPetName').innerText = student.pet.name;
+        document.getElementById('detailPetLevel').innerText = `Lv. ${student.pet.level} (${student.pet.xp} XP)`;
+
+        cancelPetNameEdit();
+
+        const uncorrectedList = student.uncorrected || [];
+        document.getElementById('detailUncorrectedCount').innerText = `${uncorrectedList.length} 項`;
+
+        const listContainer = document.getElementById('detailUncorrectedList');
+        if (uncorrectedList.length === 0) {
+            listContainer.innerHTML = `<div class="text-xs text-emerald-600 font-bold bg-emerald-50 p-3 rounded-xl text-center">🎉 無任何未訂正項目！作業好棒！</div>`;
+        } else {
+            listContainer.innerHTML = uncorrectedList.map(item => `
+                <div class="flex items-center justify-between p-2 bg-red-50 border border-red-200 rounded-xl text-xs font-bold text-red-700">
+                    <span>📍 ${item.title}</span>
+                    <button onclick="deleteUncorrectedItem('${student.id}', '${item.id}')" class="bg-emerald-500 hover:bg-emerald-600 text-white px-2.5 py-1 rounded-lg text-xs font-black shadow flex items-center gap-1 transition">
+                        <i class="fa-solid fa-check"></i> 完成訂正
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        document.getElementById('modalDetail').classList.remove('hidden');
+    }
+
+    function deleteUncorrectedItem(studentId, itemId) {
+        audio.playClick();
+        const student = state.students.find(s => s.id === studentId);
+        if (!student || !student.uncorrected) return;
+
+        const idx = student.uncorrected.findIndex(i => i.id === itemId);
+        if (idx !== -1) {
+            const popped = student.uncorrected.splice(idx, 1)[0];
+            student.completed = (student.completed || 0) + 1;
+            student.pet.xp += 25;
+
+            let leveledUp = false;
+            const reqXp = student.pet.level * 100;
+            if (student.pet.xp >= reqXp) {
+                student.pet.xp -= reqXp;
+                student.pet.level += 1;
+                leveledUp = true;
+                audio.playFanfare();
+                showToast(`🎉 ${student.name} 的寵物 ${student.pet.name} 升至 Lv.${student.pet.level}！`);
+            } else {
+                showToast(`已完成「${popped.title}」訂正！ (+25 XP)`);
+            }
+
+            pushHistory(`完成【${student.seat}號 ${student.name}】「${popped.title}」訂正`, () => {
+                student.uncorrected.push(popped);
+                student.completed = Math.max(0, (student.completed || 0) - 1);
+                student.pet.xp -= 25;
+                if (leveledUp) {
+                    student.pet.level = Math.max(1, student.pet.level - 1);
+                    student.pet.xp += (student.pet.level * 100);
+                }
+            });
+
+            saveData();
+            openStudentDetail(studentId);
+            render();
+        }
+    }
+
+    function addSingleStudentUncorrected() {
+        audio.playClick();
+        const input = document.getElementById('singleItemTitleInput');
+        const title = input.value.trim();
+        if (!title) {
+            showToast('⚠️ 請輸入作業或錯題名稱');
+            return;
+        }
+
+        const student = state.students.find(s => s.id === state.activeStudentId);
+        if (!student) return;
+
+        if (!student.uncorrected) student.uncorrected = [];
+        const newItem = { id: Date.now().toString(), title };
+        student.uncorrected.push(newItem);
+
+        pushHistory(`為【${student.seat}號 ${student.name}】新增「${title}」未訂正`, () => {
+            const itemIdx = student.uncorrected.findIndex(i => i.id === newItem.id);
+            if (itemIdx !== -1) student.uncorrected.splice(itemIdx, 1);
+        });
+
+        input.value = '';
+        saveData();
+        openStudentDetail(state.activeStudentId);
+        render();
+        showToast(`已登記「${title}」`);
+    }
+
+    function enablePetNameEdit() {
+        const student = state.students.find(s => s.id === state.activeStudentId);
+        if (!student) return;
+        document.getElementById('inputEditPetName').value = student.pet.name;
+        document.getElementById('petNameEditBox').classList.remove('hidden');
+    }
+
+    function cancelPetNameEdit() {
+        const box = document.getElementById('petNameEditBox');
+        if (box) box.classList.add('hidden');
+    }
+
+    function saveEditedPetName() {
+        const newName = document.getElementById('inputEditPetName').value.trim();
+        const student = state.students.find(s => s.id === state.activeStudentId);
+        if (student && newName) {
+            student.pet.name = newName;
+            saveData();
+            openStudentDetail(state.activeStudentId);
+            render();
+            showToast('已更換寵物暱稱！');
+        }
+    }
+
+    function changeActiveStudentPet() {
+        const student = state.students.find(s => s.id === state.activeStudentId);
+        if (!student) return;
+
+        const petTypes = ['hamster', 'shiba', 'cat', 'rabbit', 'panda', 'dragon'];
+        const currentIdx = petTypes.indexOf(student.pet.type);
+        const nextType = petTypes[(currentIdx + 1) % petTypes.length];
+
+        student.pet.type = nextType;
+        saveData();
+        openStudentDetail(state.activeStudentId);
+        render();
+        audio.playClick();
+        showToast('已變更寵物種類！');
+    }
+
+    function confirmDeleteStudent() {
+        const student = state.students.find(s => s.id === state.activeStudentId);
+        if (!student) return;
+
+        showConfirmDialog(`確定要移除 ${student.name}？`, '此操作無法復原，名冊將刪除該學生。', () => {
+            state.students = state.students.filter(s => s.id !== student.id);
+            saveData();
+            closeModal('modalDetail');
+            render();
+            showToast(`已移除學生 ${student.name}`);
+        });
+    }
+
+    function openAddStudentModal() {
+        audio.playClick();
+        const nextSeat = state.students.length > 0 ? Math.max(...state.students.map(s => s.seat)) + 1 : 1;
+        document.getElementById('inputSeat').value = nextSeat;
+        document.getElementById('inputName').value = '';
+        document.getElementById('inputPetName').value = '';
+        document.getElementById('modalAddStudent').classList.remove('hidden');
+    }
+
+    function submitNewStudent(e) {
+        e.preventDefault();
+        const seat = parseInt(document.getElementById('inputSeat').value, 10);
+        const name = document.getElementById('inputName').value.trim();
+        const petType = document.getElementById('inputPetType').value;
+        const petCustomName = document.getElementById('inputPetName').value.trim();
+
+        if (!name) return;
+
+        const defaultPetNames = { hamster: '麻糬', shiba: '阿柴', cat: '橘子', rabbit: '圓圓', panda: '團團', dragon: '小龍' };
+        const petName = petCustomName || defaultPetNames[petType] || '小寵物';
+
+        const newStudent = {
+            id: 's_' + Date.now(),
+            seat,
+            name,
+            pet: { type: petType, name: petName, level: 1, xp: 0 },
+            uncorrected: [],
+            completed: 0
+        };
+
+        state.students.push(newStudent);
+        saveData();
+        closeModal('modalAddStudent');
+        render();
+        audio.playFanfare();
+        showToast(`成功新增學生：${name}`);
+    }
+
+    function openFirebaseConfigModal() {
+        audio.playClick();
+        updateRoomCodeUI();
+        const inputArea = document.getElementById('firebaseConfigInput');
+        if (inputArea && !inputArea.value) {
+            inputArea.value = `const firebaseConfig = ${JSON.stringify(DEFAULT_FIREBASE_CONFIG, null, 2)};`;
+        }
+        document.getElementById('modalFirebaseConfig').classList.remove('hidden');
+    }
+
+    function saveFirebaseConfig() {
+        const raw = document.getElementById('firebaseConfigInput').value.trim();
+        if (!raw) {
+            showToast('⚠️ 請貼上 Firebase Config 代碼');
+            return;
+        }
+
+        try {
+            let configObj = null;
+            if (raw.includes('{') && raw.includes('}')) {
+                const jsonMatch = raw.match(/\{[\s\S]*\}/);
+                if (jsonMatch) {
+                    const cleaned = jsonMatch[0]
+                        .replace(/(['"])?([a-zA-Z0-9_]+)(['"])?:/g, '"$2":')
+                        .replace(/'/g, '"');
+                    configObj = JSON.parse(cleaned);
+                }
+            }
+            if (!configObj) throw new Error('解析失敗');
+
+            localStorage.setItem('pet_study_quest_firebase_config', JSON.stringify(configObj));
+            closeModal('modalFirebaseConfig');
+            showToast('✨ 設定檔已儲存，正在重新初始化...');
+            setTimeout(() => location.reload(), 1000);
+        } catch(err) {
+            showToast('⚠️ 設定檔格式錯誤，請檢查貼上的內容');
+        }
+    }
+
+    function exportDataJSON() {
+        audio.playClick();
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state.students, null, 2));
+        const dlAnchor = document.createElement('a');
+        dlAnchor.setAttribute("href", dataStr);
+        dlAnchor.setAttribute("download", `班級作業訂正資料備份_${new Date().toISOString().slice(0,10)}.json`);
+        document.body.appendChild(dlAnchor);
+        dlAnchor.click();
+        dlAnchor.remove();
+        showToast('已將班級資料匯出備份檔案！');
+    }
+
+    function confirmPresetReload() {
+        showConfirmDialog('重置為預設 25 人班級名冊？', '這將覆蓋當前名冊並還原為範例資料。', () => {
+            state.students = PRESET_25_STUDENTS;
+            saveData();
+            render();
+            showToast('已重置為預設 25 人班級名冊');
+        });
+    }
+
+    function triggerClassroomCelebration() {
+        audio.playFanfare();
+        showToast('🎉 全班表現太讚了！大家繼續加油！');
+    }
+
+    function closeModal(modalId) {
+        audio.playClick();
+        const modal = document.getElementById(modalId);
+        if (modal) modal.classList.add('hidden');
+    }
+
+    function showConfirmDialog(title, message, onOk) {
+        document.getElementById('confirmTitle').innerText = title;
+        document.getElementById('confirmMessage').innerText = message;
+        const okBtn = document.getElementById('confirmOkBtn');
+        const cancelBtn = document.getElementById('confirmCancelBtn');
+
+        const modal = document.getElementById('modalConfirm');
+        modal.classList.remove('hidden');
+
+        okBtn.onclick = () => {
+            modal.classList.add('hidden');
+            if (onOk) onOk();
+        };
+
+        cancelBtn.onclick = () => {
+            modal.classList.add('hidden');
+        };
+    }
+
+    function showToast(msg, actionCallback) {
+        let toast = document.getElementById('globalToast');
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.id = 'globalToast';
+            toast.className = 'fixed bottom-5 right-5 bg-slate-900/90 text-white font-extrabold text-xs px-4 py-3 rounded-2xl shadow-2xl backdrop-blur-md z-50 flex items-center gap-3 transition-all duration-300 transform translate-y-10 opacity-0 border border-slate-700';
+            document.body.appendChild(toast);
+        }
+
+        toast.innerHTML = `
+            <span>${msg}</span>
+            ${actionCallback ? `<button id="toastActionBtn" class="bg-amber-500 hover:bg-amber-600 text-white font-black px-2.5 py-1 rounded-xl text-xs transition shadow"><i class="fa-solid fa-rotate-left"></i> 復原</button>` : ''}
+        `;
+
+        if (actionCallback) {
+            const btn = document.getElementById('toastActionBtn');
+            if (btn) {
+                btn.onclick = () => {
+                    actionCallback();
+                    toast.classList.add('translate-y-10', 'opacity-0');
+                };
+            }
+        }
+
+        setTimeout(() => {
+            toast.classList.remove('translate-y-10', 'opacity-0');
+        }, 10);
+
+        clearTimeout(toast._timer);
+        toast._timer = setTimeout(() => {
+            toast.classList.add('translate-y-10', 'opacity-0');
+        }, 3500);
+    }
+
+    // Explicitly bind handlers to window scope
+    window.switchView = switchView;
+    window.setFilter = setFilter;
+    window.handleSearchInput = handleSearchInput;
+    window.openStudentDetail = openStudentDetail;
+    window.deleteUncorrectedItem = deleteUncorrectedItem;
+    window.addSingleStudentUncorrected = addSingleStudentUncorrected;
+    window.enablePetNameEdit = enablePetNameEdit;
+    window.cancelPetNameEdit = cancelPetNameEdit;
+    window.saveEditedPetName = saveEditedPetName;
+    window.changeActiveStudentPet = changeActiveStudentPet;
+    window.confirmDeleteStudent = confirmDeleteStudent;
+    window.openAddStudentModal = openAddStudentModal;
+    window.submitNewStudent = submitNewStudent;
+    window.openBatchImportModal = openBatchImportModal;
+    window.submitBatchImport = submitBatchImport;
+    window.openFirebaseConfigModal = openFirebaseConfigModal;
+    window.saveFirebaseConfig = saveFirebaseConfig;
+    window.saveRoomCode = saveRoomCode;
+    window.exportDataJSON = exportDataJSON;
+    window.confirmPresetReload = confirmPresetReload;
+    window.triggerClassroomCelebration = triggerClassroomCelebration;
+    window.closeModal = closeModal;
+    window.quickAdjust = quickAdjust;
+    window.feedActiveStudentPet = feedActiveStudentPet;
+    window.setBatchTitle = setBatchTitle;
+    window.selectAllBatchCheckboxes = selectAllBatchCheckboxes;
+    window.submitBatchAssignment = submitBatchAssignment;
+    window.openHistoryModal = openHistoryModal;
+    window.undoSpecificAction = undoSpecificAction;
+    window.forceCloudSync = forceCloudSync;
+</script>
+
+</body>
+</html>
